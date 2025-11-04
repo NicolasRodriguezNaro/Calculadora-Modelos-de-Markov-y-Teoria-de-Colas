@@ -6,37 +6,29 @@ const App = () => {
   const [mainSelection, setMainSelection] = useState(null);
   const [markovType, setMarkovType] = useState(null);
   const [queueModel, setQueueModel] = useState(null);
-
-  // Estos pueden quedar '' durante la edición
-  const [numStates, setNumStates] = useState(3);          // number | ''
-  const [numPeriods, setNumPeriods] = useState(5);        // number | ''
-
+  const [numStates, setNumStates] = useState(3);
+  const [numPeriods, setNumPeriods] = useState(5);
   const [transitionMatrix, setTransitionMatrix] = useState([]);
   const [initialVector, setInitialVector] = useState([]);
   const [initialValues, setInitialValues] = useState([]);
   const [useInitialVector, setUseInitialVector] = useState(false);
   const [absorbingStates, setAbsorbingStates] = useState([]);
   const [matrixInitialized, setMatrixInitialized] = useState(false);
-
   const [lambda, setLambda] = useState('');
   const [mu, setMu] = useState('');
-  const [numServers, setNumServers] = useState(1);        // number | ''
-  const [systemCapacity, setSystemCapacity] = useState(10); // number | ''
+  const [numServers, setNumServers] = useState(1);
+  const [systemCapacity, setSystemCapacity] = useState(10);
 
   const initializeMarkovMatrices = () => {
-    const n = Math.max(2, Math.min(10, parseInt(numStates, 10) || 2));
-
-    const matrix = Array(n).fill(null).map(() => Array(n).fill(''));
-    const vector = Array(n).fill('');
+    const matrix = Array(numStates).fill(null).map(() => Array(numStates).fill(''));
+    const vector = Array(numStates).fill('');
     vector[0] = 1;
-    const values = Array(n).fill('');
-
+    const values = Array(numStates).fill('');
     setTransitionMatrix(matrix);
     setInitialVector(vector);
     setInitialValues(values);
     setAbsorbingStates([]);
     setMatrixInitialized(true);
-    setNumStates(n); // normaliza si estaba ''
   };
 
   const updateTransitionMatrix = (i, j, value) => {
@@ -115,18 +107,13 @@ const App = () => {
 
   const markovResults = useMemo(() => {
     if (!matrixInitialized) return null;
-
-    // periods solo aplica cuando NO es absorbente; permite vacío
-    const periods = (markovType !== 'absorbing') ? (parseInt(numPeriods, 10) || 0) : 0;
-
-    // numStates está normalizado luego de inicializar; antes de eso no calculamos
     for (let i = 0; i < numStates; i++) {
       if (!validateRowSum(i)) return null;
     }
-
+    
     const parseMatrix = (matrix) => matrix.map(row => row.map(val => val === '' ? 0 : parseFloat(val) || 0));
     const parseVector = (vector) => vector.map(val => val === '' ? 0 : parseFloat(val) || 0);
-
+    
     if (markovType === 'absorbing' && absorbingStates.length > 0) {
       const parsedMatrix = parseMatrix(transitionMatrix);
       const transientStates = Array(numStates).fill(0).map((_, i) => i).filter(i => !absorbingStates.includes(i));
@@ -153,14 +140,12 @@ const App = () => {
       }
       return { type: 'absorbing', transientStates, absorbingStates: absorbingStatesList, N, B, absorption, totalInitialValue };
     }
-
     if (useInitialVector) {
-      if (markovType !== 'absorbing' && periods < 1) return null; // permite editar vacío
       if (!validateInitialVector()) return null;
       const parsedMatrix = parseMatrix(transitionMatrix);
       const parsedVector = parseVector(initialVector);
       const results = [parsedVector];
-      for (let p = 1; p <= periods; p++) {
+      for (let p = 1; p <= numPeriods; p++) {
         const stateVector = parsedVector.map((_, i) => {
           let sum = 0;
           for (let j = 0; j < numStates; j++) {
@@ -172,11 +157,10 @@ const App = () => {
       }
       return { type: 'vector', data: results };
     } else {
-      if (markovType !== 'absorbing' && periods < 1) return null; // permite editar vacío
       const parsedMatrix = parseMatrix(transitionMatrix);
       const results = [parsedMatrix];
       let currentMatrix = parsedMatrix;
-      for (let p = 1; p <= periods; p++) {
+      for (let p = 1; p <= numPeriods; p++) {
         const newMatrix = multiplyMatrices(currentMatrix, parsedMatrix);
         results.push(newMatrix);
         currentMatrix = newMatrix;
@@ -190,46 +174,39 @@ const App = () => {
   const queueResults = useMemo(() => {
     const parsedLambda = lambda === '' ? 0 : parseFloat(lambda) || 0;
     const parsedMu = mu === '' ? 0 : parseFloat(mu) || 0;
-
-    // Normaliza servidores y capacidad para modelos que lo usen (permitir vacío)
-    const servers = parseInt(numServers, 10) || 0;
-    const capacity = parseInt(systemCapacity, 10) || 0;
-
+    
     if (parsedLambda === 0 || parsedMu === 0) return null;
-
+    
     if (queueModel === 'mm1') {
       const rho = parsedLambda / parsedMu;
       if (rho >= 1) return { error: 'Sistema inestable' };
       return { rho, L: rho / (1 - rho), Lq: (rho * rho) / (1 - rho), W: 1 / (parsedMu - parsedLambda), Wq: parsedLambda / (parsedMu * (parsedMu - parsedLambda)), P0: 1 - rho };
     } else if (queueModel === 'mmc') {
-      if (servers < 1) return null; // permite input vacío sin romper
-      const rho = parsedLambda / (servers * parsedMu);
+      const rho = parsedLambda / (numServers * parsedMu);
       if (rho >= 1) return { error: 'Sistema inestable' };
       const a = parsedLambda / parsedMu;
       let P0 = 0;
-      for (let n = 0; n < servers; n++) P0 += Math.pow(a, n) / factorial(n);
-      P0 += (Math.pow(a, servers) / factorial(servers)) * (1 / (1 - rho));
+      for (let n = 0; n < numServers; n++) P0 += Math.pow(a, n) / factorial(n);
+      P0 += (Math.pow(a, numServers) / factorial(numServers)) * (1 / (1 - rho));
       P0 = 1 / P0;
-      const Lq = (P0 * Math.pow(a, servers) * rho) / (factorial(servers) * Math.pow(1 - rho, 2));
+      const Lq = (P0 * Math.pow(a, numServers) * rho) / (factorial(numServers) * Math.pow(1 - rho, 2));
       return { rho, L: Lq + a, Lq, W: (Lq / parsedLambda) + (1 / parsedMu), Wq: Lq / parsedLambda, P0 };
     } else if (queueModel === 'mmck') {
-      if (servers < 1) return null;
-      if (capacity < servers) return null; // evita estados inconsistentes mientras editas
       const a = parsedLambda / parsedMu;
       let P0 = 0;
-      for (let n = 0; n < servers; n++) P0 += Math.pow(a, n) / factorial(n);
+      for (let n = 0; n < numServers; n++) P0 += Math.pow(a, n) / factorial(n);
       let sumTerm = 0;
-      for (let n = servers; n <= capacity; n++) {
-        sumTerm += Math.pow(a, n) / (factorial(servers) * Math.pow(servers, n - servers));
+      for (let n = numServers; n <= systemCapacity; n++) {
+        sumTerm += Math.pow(a, n) / (factorial(numServers) * Math.pow(numServers, n - numServers));
       }
       P0 = 1 / (P0 + sumTerm);
       let Lq = 0;
-      for (let n = servers; n <= capacity; n++) {
-        const Pn = (Math.pow(a, n) * P0) / (factorial(servers) * Math.pow(servers, n - servers));
-        Lq += (n - servers) * Pn;
+      for (let n = numServers; n <= systemCapacity; n++) {
+        const Pn = (Math.pow(a, n) * P0) / (factorial(numServers) * Math.pow(numServers, n - numServers));
+        Lq += (n - numServers) * Pn;
       }
-      const lambdaEff = parsedLambda * (1 - (Math.pow(a, capacity) * P0) / (factorial(servers) * Math.pow(servers, capacity - servers)));
-      return { rho: parsedLambda / (servers * parsedMu), L: Lq + (lambdaEff / parsedMu), Lq, W: Lq / lambdaEff + 1 / parsedMu, Wq: Lq / lambdaEff, P0 };
+      const lambdaEff = parsedLambda * (1 - (Math.pow(a, systemCapacity) * P0) / (factorial(numServers) * Math.pow(numServers, systemCapacity - numServers)));
+      return { rho: parsedLambda / (numServers * parsedMu), L: Lq + (lambdaEff / parsedMu), Lq, W: Lq / lambdaEff + 1 / parsedMu, Wq: Lq / lambdaEff, P0 };
     }
     return null;
   }, [queueModel, lambda, mu, numServers, systemCapacity]);
@@ -323,36 +300,13 @@ const App = () => {
               {(queueModel === 'mmc' || queueModel === 'mmck') && (
                 <div>
                   <label className="block text-sm font-medium mb-2">Servidores (c)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={numServers === '' ? '' : numServers}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === '') { setNumServers(''); return; }
-                      const n = Math.max(1, parseInt(v, 10) || 1);
-                      setNumServers(n);
-                    }}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  />
+                  <input type="number" min="1" value={numServers} onChange={(e) => setNumServers(parseInt(e.target.value) || 1)} className="w-full px-4 py-2 border rounded-lg" />
                 </div>
               )}
               {queueModel === 'mmck' && (
                 <div>
                   <label className="block text-sm font-medium mb-2">Capacidad (K)</label>
-                  <input
-                    type="number"
-                    min={parseInt(numServers, 10) || 1}
-                    value={systemCapacity === '' ? '' : systemCapacity}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === '') { setSystemCapacity(''); return; }
-                      const c = parseInt(numServers, 10) || 1;
-                      const k = Math.max(c, parseInt(v, 10) || c);
-                      setSystemCapacity(k);
-                    }}
-                    className="w-full px-4 py-2 border rounded-lg"
-                  />
+                  <input type="number" min={numServers} value={systemCapacity} onChange={(e) => setSystemCapacity(parseInt(e.target.value) || numServers)} className="w-full px-4 py-2 border rounded-lg" />
                 </div>
               )}
             </div>
@@ -446,10 +400,10 @@ const App = () => {
                       <span className="text-blue-700"> El sistema está casi siempre ocupado.</span>
                     )}
                   </p>
-                  {queueModel === 'mmc' && (parseInt(numServers, 10) || 0) > 1 && (
+                  {queueModel === 'mmc' && numServers > 1 && (
                     <p>
-                      <strong>Efecto de múltiples servidores:</strong> Con {parseInt(numServers, 10)} servidores, el sistema puede{' '}
-                      atender hasta {(((parseInt(numServers, 10) || 0) * (parseFloat(mu) || 0))).toFixed(2)} clientes por hora en capacidad máxima.
+                      <strong>Efecto de múltiples servidores:</strong> Con {numServers} servidores, el sistema puede{' '}
+                      atender hasta {(numServers * mu).toFixed(2)} clientes por hora en capacidad máxima.
                     </p>
                   )}
                 </div>
@@ -483,44 +437,12 @@ const App = () => {
           <div className="grid md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2">Estados</label>
-              <input
-                type="number"
-                min="2"
-                max="10"
-                value={numStates === '' ? '' : numStates}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === '') {
-                    setNumStates('');
-                    setMatrixInitialized(false);
-                    return;
-                  }
-                  const n = Math.max(2, Math.min(10, parseInt(v, 10) || 2));
-                  setNumStates(n);
-                  setMatrixInitialized(false);
-                }}
-                className="w-full px-4 py-2 border rounded-lg"
-              />
+              <input type="number" min="2" max="10" value={numStates} onChange={(e) => { setNumStates(parseInt(e.target.value) || 2); setMatrixInitialized(false); }} className="w-full px-4 py-2 border rounded-lg" />
             </div>
             {markovType !== 'absorbing' && (
               <div>
                 <label className="block text-sm font-medium mb-2">Períodos</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={numPeriods === '' ? '' : numPeriods}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '') {
-                      setNumPeriods('');
-                      return;
-                    }
-                    const n = Math.max(1, Math.min(20, parseInt(v, 10) || 1));
-                    setNumPeriods(n);
-                  }}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
+                <input type="number" min="1" max="20" value={numPeriods} onChange={(e) => setNumPeriods(parseInt(e.target.value) || 1)} className="w-full px-4 py-2 border rounded-lg" />
               </div>
             )}
             <div className="flex items-end">
@@ -615,14 +537,7 @@ const App = () => {
                         <td className="p-2 font-medium border bg-gray-50">Estado {i + 1}</td>
                         {row.map((val, j) => (
                           <td key={j} className="p-1 border text-center">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={val}
-                              onChange={(e) => updateTransitionMatrix(i, j, e.target.value)}
-                              disabled={absorbingStates.includes(i) && i !== j}
-                              className="w-20 px-2 py-1 border rounded text-center"
-                            />
+                            <input type="number" step="0.01" value={val} onChange={(e) => updateTransitionMatrix(i, j, e.target.value)} disabled={absorbingStates.includes(i) && i !== j} className="w-20 px-2 py-1 border rounded text-center" />
                           </td>
                         ))}
                         <td className="p-2 text-center border">
@@ -652,7 +567,7 @@ const App = () => {
             {markovResults && markovResults.type === 'absorbing' && (
               <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
                 <h2 className="text-xl font-bold mb-6">Resultados</h2>
-
+                
                 <div className="mb-6">
                   <h3 className="font-medium mb-3">Matriz Fundamental (N)</h3>
                   <div className="overflow-x-auto">
@@ -759,7 +674,7 @@ const App = () => {
                           </p>
                         ))}
                         <p className="mt-3 text-sm italic">
-                          Estos valores representan la distribución final cuando todos los estados transitorios
+                          Estos valores representan la distribución final cuando todos los estados transitorios 
                           eventualmente sean absorbidos.
                         </p>
                       </div>
@@ -772,13 +687,13 @@ const App = () => {
             {markovResults && markovResults.type === 'vector' && (
               <div className="bg-white rounded-2xl shadow-lg p-6">
                 <h2 className="text-xl font-bold mb-4">Resultados</h2>
-
+                
                 <div className="mb-6">
                   <h3 className="font-medium mb-3">Evolución de Estados</h3>
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={markovResults.data.map((states, period) => ({
                       period,
-                      ...states.reduce((acc, val, i) => ({ ...acc, [`Estado ${i + 1}`]: val }), {})
+                      ...states.reduce((acc, val, i) => ({...acc, [`Estado ${i + 1}`]: val}), {})
                     }))}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="period" />
@@ -871,7 +786,7 @@ const App = () => {
                         return (
                           <>
                             <p className="font-medium">
-                              <strong>Estado dominante:</strong> El <strong>Estado {maxState + 1}</strong> tiene la mayor
+                              <strong>Estado dominante:</strong> El <strong>Estado {maxState + 1}</strong> tiene la mayor 
                               probabilidad con <strong>{(maxProb * 100).toFixed(2)}%</strong>.
                             </p>
                             {maxProb > 0.6 && (

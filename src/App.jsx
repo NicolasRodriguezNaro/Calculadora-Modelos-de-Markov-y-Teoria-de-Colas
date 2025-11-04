@@ -314,11 +314,11 @@ const App = () => {
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Lambda (λ)</label>
-                <input type="number" step="0.1" value={lambda} onChange={(e) => setLambda(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="Tasa de llegada" />
+                <input type="number" step="0.1" value={lambda} onChange={(e) => setLambda(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="Tasa de llegada (Por hora)" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Mu (μ)</label>
-                <input type="number" step="0.1" value={mu} onChange={(e) => setMu(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="Tasa de servicio" />
+                <input type="number" step="0.1" value={mu} onChange={(e) => setMu(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="Tasa de servicio (Por hora)" />
               </div>
               {(queueModel === 'mmc' || queueModel === 'mmck') && (
                 <div>

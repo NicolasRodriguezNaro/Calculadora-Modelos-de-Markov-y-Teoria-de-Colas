@@ -14,16 +14,16 @@ const App = () => {
   const [useInitialVector, setUseInitialVector] = useState(false);
   const [absorbingStates, setAbsorbingStates] = useState([]);
   const [matrixInitialized, setMatrixInitialized] = useState(false);
-  const [lambda, setLambda] = useState('');
-  const [mu, setMu] = useState('');
+  const [lambda, setLambda] = useState(5);
+  const [mu, setMu] = useState(8);
   const [numServers, setNumServers] = useState(1);
   const [systemCapacity, setSystemCapacity] = useState(10);
 
   const initializeMarkovMatrices = () => {
-    const matrix = Array(numStates).fill(null).map(() => Array(numStates).fill(''));
-    const vector = Array(numStates).fill('');
+    const matrix = Array(numStates).fill(null).map(() => Array(numStates).fill(0));
+    const vector = Array(numStates).fill(0);
     vector[0] = 1;
-    const values = Array(numStates).fill('');
+    const values = Array(numStates).fill(0);
     setTransitionMatrix(matrix);
     setInitialVector(vector);
     setInitialValues(values);
@@ -33,19 +33,19 @@ const App = () => {
 
   const updateTransitionMatrix = (i, j, value) => {
     const newMatrix = transitionMatrix.map(row => [...row]);
-    newMatrix[i][j] = value;
+    newMatrix[i][j] = parseFloat(value) || 0;
     setTransitionMatrix(newMatrix);
   };
 
   const updateInitialVector = (i, value) => {
     const newVector = [...initialVector];
-    newVector[i] = value;
+    newVector[i] = parseFloat(value) || 0;
     setInitialVector(newVector);
   };
 
   const updateInitialValues = (i, value) => {
     const newValues = [...initialValues];
-    newValues[i] = value;
+    newValues[i] = parseFloat(value) || 0;
     setInitialValues(newValues);
   };
 
@@ -54,18 +54,12 @@ const App = () => {
   };
 
   const validateRowSum = (rowIndex) => {
-    const sum = transitionMatrix[rowIndex].reduce((a, b) => {
-      const val = b === '' ? 0 : parseFloat(b);
-      return a + (isNaN(val) ? 0 : val);
-    }, 0);
+    const sum = transitionMatrix[rowIndex].reduce((a, b) => a + b, 0);
     return Math.abs(sum - 1) < 0.0001;
   };
 
   const validateInitialVector = () => {
-    const sum = initialVector.reduce((a, b) => {
-      const val = b === '' ? 0 : parseFloat(b);
-      return a + (isNaN(val) ? 0 : val);
-    }, 0);
+    const sum = initialVector.reduce((a, b) => a + b, 0);
     return Math.abs(sum - 1) < 0.0001;
   };
 
@@ -110,26 +104,20 @@ const App = () => {
     for (let i = 0; i < numStates; i++) {
       if (!validateRowSum(i)) return null;
     }
-    
-    const parseMatrix = (matrix) => matrix.map(row => row.map(val => val === '' ? 0 : parseFloat(val) || 0));
-    const parseVector = (vector) => vector.map(val => val === '' ? 0 : parseFloat(val) || 0);
-    
     if (markovType === 'absorbing' && absorbingStates.length > 0) {
-      const parsedMatrix = parseMatrix(transitionMatrix);
       const transientStates = Array(numStates).fill(0).map((_, i) => i).filter(i => !absorbingStates.includes(i));
       const absorbingStatesList = absorbingStates.slice().sort((a, b) => a - b);
       if (transientStates.length === 0) return { type: 'error', message: 'Debe haber al menos un estado transitorio' };
-      const Q = transientStates.map(i => transientStates.map(j => parsedMatrix[i][j]));
-      const R = transientStates.map(i => absorbingStatesList.map(j => parsedMatrix[i][j]));
+      const Q = transientStates.map(i => transientStates.map(j => transitionMatrix[i][j]));
+      const R = transientStates.map(i => absorbingStatesList.map(j => transitionMatrix[i][j]));
       const IQ = Q.map((row, i) => row.map((val, j) => (i === j ? 1 : 0) - val));
       const N = invertMatrix(IQ);
       if (!N) return { type: 'error', message: 'No se pudo calcular la matriz fundamental' };
       const B = multiplyMatrices(N, R);
-      const parsedValues = parseVector(initialValues);
-      const totalInitialValue = parsedValues.reduce((sum, val) => sum + val, 0);
+      const totalInitialValue = initialValues.reduce((sum, val) => sum + val, 0);
       let absorption = null;
       if (totalInitialValue > 0) {
-        const transientValues = transientStates.map(i => parsedValues[i]);
+        const transientValues = transientStates.map(i => initialValues[i]);
         absorption = absorbingStatesList.map((absState, j) => {
           let total = 0;
           for (let i = 0; i < transientStates.length; i++) {
@@ -142,14 +130,12 @@ const App = () => {
     }
     if (useInitialVector) {
       if (!validateInitialVector()) return null;
-      const parsedMatrix = parseMatrix(transitionMatrix);
-      const parsedVector = parseVector(initialVector);
-      const results = [parsedVector];
+      const results = [initialVector];
       for (let p = 1; p <= numPeriods; p++) {
-        const stateVector = parsedVector.map((_, i) => {
+        const stateVector = initialVector.map((_, i) => {
           let sum = 0;
           for (let j = 0; j < numStates; j++) {
-            sum += results[p - 1][j] * parsedMatrix[j][i];
+            sum += results[p - 1][j] * transitionMatrix[j][i];
           }
           return sum;
         });
@@ -157,11 +143,10 @@ const App = () => {
       }
       return { type: 'vector', data: results };
     } else {
-      const parsedMatrix = parseMatrix(transitionMatrix);
-      const results = [parsedMatrix];
-      let currentMatrix = parsedMatrix;
+      const results = [transitionMatrix];
+      let currentMatrix = transitionMatrix;
       for (let p = 1; p <= numPeriods; p++) {
-        const newMatrix = multiplyMatrices(currentMatrix, parsedMatrix);
+        const newMatrix = multiplyMatrices(currentMatrix, transitionMatrix);
         results.push(newMatrix);
         currentMatrix = newMatrix;
       }
@@ -172,27 +157,22 @@ const App = () => {
   const factorial = (n) => n <= 1 ? 1 : n * factorial(n - 1);
 
   const queueResults = useMemo(() => {
-    const parsedLambda = lambda === '' ? 0 : parseFloat(lambda) || 0;
-    const parsedMu = mu === '' ? 0 : parseFloat(mu) || 0;
-    
-    if (parsedLambda === 0 || parsedMu === 0) return null;
-    
     if (queueModel === 'mm1') {
-      const rho = parsedLambda / parsedMu;
+      const rho = lambda / mu;
       if (rho >= 1) return { error: 'Sistema inestable' };
-      return { rho, L: rho / (1 - rho), Lq: (rho * rho) / (1 - rho), W: 1 / (parsedMu - parsedLambda), Wq: parsedLambda / (parsedMu * (parsedMu - parsedLambda)), P0: 1 - rho };
+      return { rho, L: rho / (1 - rho), Lq: (rho * rho) / (1 - rho), W: 1 / (mu - lambda), Wq: lambda / (mu * (mu - lambda)), P0: 1 - rho };
     } else if (queueModel === 'mmc') {
-      const rho = parsedLambda / (numServers * parsedMu);
+      const rho = lambda / (numServers * mu);
       if (rho >= 1) return { error: 'Sistema inestable' };
-      const a = parsedLambda / parsedMu;
+      const a = lambda / mu;
       let P0 = 0;
       for (let n = 0; n < numServers; n++) P0 += Math.pow(a, n) / factorial(n);
       P0 += (Math.pow(a, numServers) / factorial(numServers)) * (1 / (1 - rho));
       P0 = 1 / P0;
       const Lq = (P0 * Math.pow(a, numServers) * rho) / (factorial(numServers) * Math.pow(1 - rho, 2));
-      return { rho, L: Lq + a, Lq, W: (Lq / parsedLambda) + (1 / parsedMu), Wq: Lq / parsedLambda, P0 };
+      return { rho, L: Lq + a, Lq, W: (Lq / lambda) + (1 / mu), Wq: Lq / lambda, P0 };
     } else if (queueModel === 'mmck') {
-      const a = parsedLambda / parsedMu;
+      const a = lambda / mu;
       let P0 = 0;
       for (let n = 0; n < numServers; n++) P0 += Math.pow(a, n) / factorial(n);
       let sumTerm = 0;
@@ -205,8 +185,8 @@ const App = () => {
         const Pn = (Math.pow(a, n) * P0) / (factorial(numServers) * Math.pow(numServers, n - numServers));
         Lq += (n - numServers) * Pn;
       }
-      const lambdaEff = parsedLambda * (1 - (Math.pow(a, systemCapacity) * P0) / (factorial(numServers) * Math.pow(numServers, systemCapacity - numServers)));
-      return { rho: parsedLambda / (numServers * parsedMu), L: Lq + (lambdaEff / parsedMu), Lq, W: Lq / lambdaEff + 1 / parsedMu, Wq: Lq / lambdaEff, P0 };
+      const lambdaEff = lambda * (1 - (Math.pow(a, systemCapacity) * P0) / (factorial(numServers) * Math.pow(numServers, systemCapacity - numServers)));
+      return { rho: lambda / (numServers * mu), L: Lq + (lambdaEff / mu), Lq, W: Lq / lambdaEff + 1 / mu, Wq: Lq / lambdaEff, P0 };
     }
     return null;
   }, [queueModel, lambda, mu, numServers, systemCapacity]);
@@ -291,11 +271,11 @@ const App = () => {
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Lambda (λ)</label>
-                <input type="number" step="0.1" value={lambda} onChange={(e) => setLambda(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="Tasa de llegada" />
+                <input type="number" step="0.1" value={lambda} onChange={(e) => setLambda(parseFloat(e.target.value) || 0)} className="w-full px-4 py-2 border rounded-lg" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Mu (μ)</label>
-                <input type="number" step="0.1" value={mu} onChange={(e) => setMu(e.target.value)} className="w-full px-4 py-2 border rounded-lg" placeholder="Tasa de servicio" />
+                <input type="number" step="0.1" value={mu} onChange={(e) => setMu(parseFloat(e.target.value) || 0)} className="w-full px-4 py-2 border rounded-lg" />
               </div>
               {(queueModel === 'mmc' || queueModel === 'mmck') && (
                 <div>
@@ -481,10 +461,7 @@ const App = () => {
                   })}
                 </div>
                 <div className="mt-3 text-sm text-gray-600">
-                  Total: <span className="font-bold">{initialValues.reduce((a, b) => {
-                    const val = b === '' ? 0 : parseFloat(b);
-                    return a + (isNaN(val) ? 0 : val);
-                  }, 0).toLocaleString()}</span>
+                  Total: <span className="font-bold">{initialValues.reduce((a, b) => a + b, 0).toLocaleString()}</span>
                 </div>
               </div>
             )}
@@ -541,12 +518,7 @@ const App = () => {
                           </td>
                         ))}
                         <td className="p-2 text-center border">
-                          <span className={validateRowSum(i) ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                            {row.reduce((a, b) => {
-                              const val = b === '' ? 0 : parseFloat(b);
-                              return a + (isNaN(val) ? 0 : val);
-                            }, 0).toFixed(3)}
-                          </span>
+                          <span className={validateRowSum(i) ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>{row.reduce((a, b) => a + b, 0).toFixed(3)}</span>
                         </td>
                       </tr>
                     ))}
@@ -732,7 +704,6 @@ const App = () => {
                 </div>
 
                 <div className="mt-6 overflow-x-auto">
-                  <h3 className="font-medium mb-3">Tabla de Probabilidades</h3>
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="bg-gray-50">
@@ -770,39 +741,23 @@ const App = () => {
                       return (
                         <p key={i}>
                           • <strong>Estado {i + 1}:</strong> Comenzó con <strong>{inicial.toFixed(2)}%</strong> de probabilidad
-                          y después de {numPeriods} períodos quedó en <strong>{final.toFixed(2)}%</strong>
-                          {cambio > 0.5 && <span className="text-green-700"> (↑ aumentó {Math.abs(cambio).toFixed(2)} puntos porcentuales)</span>}
-                          {cambio < -0.5 && <span className="text-red-700"> (↓ disminuyó {Math.abs(cambio).toFixed(2)} puntos porcentuales)</span>}
-                          {Math.abs(cambio) <= 0.5 && <span className="text-gray-600"> (≈ se mantuvo estable)</span>}
+                          y después de {numPeriods} períodos tiene <strong>{final.toFixed(2)}%</strong>
+                          {cambio > 0 && <span className="text-green-700"> (↑ aumentó {Math.abs(cambio).toFixed(2)}%)</span>}
+                          {cambio < 0 && <span className="text-red-700"> (↓ disminuyó {Math.abs(cambio).toFixed(2)}%)</span>}
+                          {Math.abs(cambio) < 0.01 && <span className="text-gray-600"> (≈ se mantuvo estable)</span>}
                         </p>
                       );
                     })}
-                    <div className="mt-4 pt-4 border-t border-blue-200">
-                      {(() => {
-                        const maxProb = Math.max(...markovResults.data[numPeriods]);
-                        const maxState = markovResults.data[numPeriods].indexOf(maxProb);
-                        const minProb = Math.min(...markovResults.data[numPeriods]);
-                        const minState = markovResults.data[numPeriods].indexOf(minProb);
-                        return (
-                          <>
-                            <p className="font-medium">
-                              <strong>Estado dominante:</strong> El <strong>Estado {maxState + 1}</strong> tiene la mayor 
-                              probabilidad con <strong>{(maxProb * 100).toFixed(2)}%</strong>.
-                            </p>
-                            {maxProb > 0.6 && (
-                              <p className="text-sm text-blue-700 mt-1">
-                                Este estado es muy dominante, el sistema tiende a permanecer en él.
-                              </p>
-                            )}
-                            {maxProb < 0.4 && markovResults.data[numPeriods].filter(p => p > 0.2).length > 2 && (
-                              <p className="text-sm text-blue-700 mt-1">
-                                Las probabilidades están bien distribuidas entre varios estados.
-                              </p>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
+                    {(() => {
+                      const maxProb = Math.max(...markovResults.data[numPeriods]);
+                      const maxState = markovResults.data[numPeriods].indexOf(maxProb);
+                      return (
+                        <p className="mt-3 font-medium">
+                          El estado más probable después de {numPeriods} períodos es el{' '}
+                          <strong>Estado {maxState + 1}</strong> con {(maxProb * 100).toFixed(2)}% de probabilidad.
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
